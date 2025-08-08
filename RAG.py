@@ -7,6 +7,8 @@ from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
+from query_transformation import transform_query
+
 # --- Configurações ---
 load_dotenv()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -43,7 +45,7 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
 
 # 2. Criar o cliente do LLM
 client = ChatGroq(
-    api_key=GROQ_API_KEY, # Use a variável carregada
+    api_key=GROQ_API_KEY, 
     model_name=GEN_MODEL_ID
 )
 
@@ -62,8 +64,24 @@ def update_conversation_history(question, answer):
 
 def rag_chain(input_text: str):
     """Executa a cadeia de RAG."""
-    retrieved_docs = retriever.get_relevant_documents(input_text)
-    context = "\n".join([doc.page_content for doc in retrieved_docs])
+
+    original_docs = retriever.get_relevant_documents(input_text)
+
+
+    transformed_query = transform_query(input_text, conversation_history)
+    transformed_docs = retriever.get_relevant_documents(transformed_query)
+
+    all_docs = original_docs + transformed_docs
+    unique_docs = []
+    seen_content = set()
+
+    for doc in all_docs:
+        if doc.page_content not in seen_content:
+            seen_content.add(doc.page_content)
+            unique_docs.append(doc)
+    
+    context_docs = unique_docs[:TOP_K*2]
+    context = "\n".join([doc.page_content for doc in context_docs])
     
     # Formata o histórico para o prompt
     formatted_history = "\n".join([f"User: {turn['question']}\nAI: {turn['answer']}" for turn in conversation_history])
@@ -79,6 +97,9 @@ def rag_chain(input_text: str):
     print('='*50)
     print(f"LLM: {GEN_MODEL_ID} | Embedding: {EMBED_MODEL_ID}")
     print('='*50)
+    print(f"QUERY ORIGINAL: {input_text}")
+    print(f"QUERY TRANSFORMADA: {transformed_query}")
+    print('='*50)
     print(f"PROMPT ENVIADO:\n{final_prompt}")
     print('='*50)
     print(f"RESPOSTA RECEBIDA:\n{answer}")
@@ -87,5 +108,5 @@ def rag_chain(input_text: str):
     return {
         "input": input_text,
         "resposta": answer,
-        "contexto": retrieved_docs
+        "contexto": context_docs
     }
