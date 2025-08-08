@@ -56,7 +56,7 @@ Este projeto está sob a licença MIT.
 
 ### 🔗 Links Úteis
 
-- Protótipo no Figma (em breve)
+- Protótipo no Figma: [Acessar Protótipo](https://www.figma.com/design/SInoeTBC9UeHqqn0rw5g51/Prototipo-DRIACA?node-id=0-1&t=8qrK2B1f6DQg31tN-1)
 
 - Hospedagem (em breve)
 
