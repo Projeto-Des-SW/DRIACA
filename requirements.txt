@@ -15,6 +15,12 @@ Spire.Doc
 pypdf
 fpdf2
 
+# API
+fastapi>=0.95.0
+uvicorn>=0.21.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
 
 # Interface web
 streamlit>=1.32.0
