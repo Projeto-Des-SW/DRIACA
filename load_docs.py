@@ -5,14 +5,16 @@ from pathlib import Path
 from langchain_docling import DoclingLoader
 from langchain_docling.loader import ExportType
 from langchain_core.documents import Document
+from dotenv import load_dotenv
 
 # --- Novas importações necessárias para a função de reconstrução ---
 from pypdf import PdfReader
 from fpdf import FPDF
 
 # --- Configurações ---
-DOCUMENTS_DIR = "Documentos_sanitized_estagio"
-OUTPUT_DOCS_FILE = "processed_docs.pkl"
+load_dotenv()
+DOCUMENTS_DIR =  os.getenv("DOCUMENTS_DIR")
+OUTPUT_DOCS_FILE = os.getenv("OUTPUT_DOCS_FILE")
 
 def load_all_files_from_directory(directory: str) -> list[str]:
     """Carrega todos os arquivos de um diretório."""

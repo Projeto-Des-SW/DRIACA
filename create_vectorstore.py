@@ -30,7 +30,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["HUGGINGFACE_HUB_DISABLE_SYMLINKS"] = "1"
 INPUT_DOCS_FILE = "processed_docs.pkl"
 
-def main():
+def create_vectorstore():
     """
     Carrega documentos pré-processados e cria um Vector Store com
     as configurações de chunking e embedding especificadas.
@@ -72,4 +72,4 @@ def main():
     print(f"🎉 Etapa 2 concluída! Vector Store criado com sucesso.")
 
 if __name__ == "__main__":
-    main()
+    create_vectorstore()

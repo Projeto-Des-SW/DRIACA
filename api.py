@@ -1,13 +1,44 @@
 import os
 import logging
+import pickle
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import APIKeyHeader
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from RAG import rag_chain, reset_conversation_history
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from fastapi import (
+    FastAPI,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    status,
+    UploadFile,
+)
 from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+import shutil
+
+# Local application imports
+from RAG import rag_chain, reset_conversation_history
+from store_manager import FileStorageManager
+from load_docs import (
+    load_all_files_from_directory,
+    preprocess_text,
+    rebuild_pdf_from_text,
+    DoclingLoader,
+    ExportType,
+    Document
+)
+
+from create_vectorstore import create_vectorstore
+
 
 # --- Configuração da API ---
 app = FastAPI(
@@ -28,6 +59,13 @@ app.add_middleware(
 # --- Configuração de Segurança ---
 API_KEY_NAME = "x-api-key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+DOCUMENTS_DIR =  os.getenv("DOCUMENTS_DIR")
+OUTPUT_DOCS_FILE = os.getenv("OUTPUT_DOCS_FILE")
+EMBED_MODEL_ID = os.getenv("EMBED_MODEL_ID") 
+FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH")
+INPUT_DOCS_FILE = os.getenv("INPUT_DOCS_FILE", "processed_docs.pkl")
+
 
 VALID_API_KEYS = {
     os.getenv("API_KEY", "default-secret-key"): "client-1"
@@ -150,6 +188,180 @@ async def reset_conversation(api_key: str = Depends(get_api_key)):
             status_code=500,
             detail=f"Erro ao resetar histórico: {str(e)}"
         )
+    
+
+# ---- file manager -----
+
+storage_manager = FileStorageManager(storage_root=DOCUMENTS_DIR)
+
+@app.post("/api/documents/")
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        result = storage_manager.save_file(file.filename, file_content)
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["message"])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/documents/")
+async def list_documents():
+    return storage_manager.list_files()
+
+@app.get("/api/documents/{filename}")
+async def get_document(filename: str):
+    file_path = storage_manager.get_file_path(filename)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return FileResponse(file_path)
+
+
+
+@app.post("/process/", status_code=status.HTTP_202_ACCEPTED)
+async def process_documents(reprocess: bool = False):
+    """
+    Endpoint para processar todos os documentos no diretório.
+    
+    Parâmetros:
+    - reprocess: Se True, reprocessa todos os documentos, incluindo os já processados
+    """
+    try:
+        start_time = datetime.now()
+        
+        file_paths = load_all_files_from_directory(DOCUMENTS_DIR)
+        if not file_paths:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nenhum arquivo encontrado no diretório {DOCUMENTS_DIR}"
+            )
+        
+        all_docs = []
+        failed_files = []
+
+        for file_path in file_paths:
+            file_name = Path(file_path).name
+            
+            # Pular arquivos já reconstruídos, a menos que reprocess=True
+            if "_REBUILT_FROM_" in file_name and not reprocess:
+                continue
+                
+            try:
+                loader = DoclingLoader(file_path=file_path, export_type=ExportType.MARKDOWN)
+                docs_from_file = loader.load()
+                all_docs.extend(docs_from_file)
+                
+            except Exception as e:
+                # Tentar reconstruir o PDF
+                base_name, ext = os.path.splitext(file_path)
+                rebuilt_file_path = f"{base_name}_REBUILT_FROM_TEXT{ext}"
+                
+                if rebuild_pdf_from_text(file_path, rebuilt_file_path):
+                    try:
+                        loader = DoclingLoader(file_path=rebuilt_file_path, export_type=ExportType.MARKDOWN)
+                        docs_from_file = loader.load()
+                        all_docs.extend(docs_from_file)
+                    except Exception as e2:
+                        failed_files.append(file_name)
+                else:
+                    failed_files.append(file_name)
+        
+        # Pré-processamento
+        processed_docs = []
+        for doc in all_docs:
+            cleaned_content = preprocess_text(doc.page_content)
+            if cleaned_content:
+                processed_docs.append(Document(
+                    page_content=cleaned_content,
+                    metadata=doc.metadata
+                ))
+        
+        # Salvar documentos processados
+        with open(OUTPUT_DOCS_FILE, "wb") as f:
+            pickle.dump(processed_docs, f)
+        
+        processing_time = (datetime.now() - start_time).total_seconds()
+        
+        return {
+            "status": "completed",
+            "processed_documents": len(processed_docs),
+            "failed_documents": len(failed_files),
+            "failed_files": failed_files,
+            "processing_time_seconds": processing_time,
+            "output_file": OUTPUT_DOCS_FILE
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro durante o processamento: {str(e)}"
+        )
+
+@app.get("/processed-documents/", response_model=List[dict])
+async def get_processed_documents():
+    """
+    Retorna a lista de documentos processados.
+    """
+    try:
+        if not os.path.exists(OUTPUT_DOCS_FILE):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Nenhum documento processado encontrado"
+            )
+            
+        with open(OUTPUT_DOCS_FILE, "rb") as f:
+            processed_docs = pickle.load(f)
+            
+        return [
+            {
+                "content": doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content,
+                "metadata": doc.metadata,
+                "length": len(doc.page_content)
+            }
+            for doc in processed_docs
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao recuperar documentos processados: {str(e)}"
+        )
+
+@app.get("/status/")
+async def get_processing_status():
+    """
+    Retorna o status atual do processamento de documentos.
+    """
+    try:
+        total_files = len(load_all_files_from_directory(DOCUMENTS_DIR))
+        processed_exists = os.path.exists(OUTPUT_DOCS_FILE)
+        
+        return {
+            "documents_directory": DOCUMENTS_DIR,
+            "total_files": total_files,
+            "processing_completed": processed_exists,
+            "last_processed": datetime.fromtimestamp(os.path.getmtime(OUTPUT_DOCS_FILE)).isoformat() if processed_exists else None
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao verificar status: {str(e)}"
+        )
+
+#  ------ vector store
+
+@app.post("/create-vector-store")
+async def create_vector_store_endpoint():
+    """
+    Cria um novo vector store
+    """
+    try:
+        return create_vectorstore()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 # Documentação adicional
 app.openapi_tags = [{

@@ -28,20 +28,28 @@ PROMPT = PromptTemplate.from_template(
 
 # 1. Carregar o Vector Store existente
 def load_vector_store():
-    """Carrega o índice FAISS do disco."""
-    if not Path(FAISS_INDEX_PATH).exists():
-        raise FileNotFoundError(
-            f"Diretório do índice FAISS não encontrado em '{FAISS_INDEX_PATH}'. "
-            "Por favor, execute o script 'ingest.py' primeiro para criar o índice."
-        )
-    print("✅ Carregando índice FAISS existente...")
-    embedding = HuggingFaceEmbeddings(model_name=EMBED_MODEL_ID)
-    vectorstore = FAISS.load_local(FAISS_INDEX_PATH, embedding, allow_dangerous_deserialization=True)
-    print("✅ Índice carregado com sucesso.")
-    return vectorstore
+    """Carrega o índice FAISS do disco. Retorna None em caso de erro."""
+    try:
+        if not Path(FAISS_INDEX_PATH).exists():
+            raise FileNotFoundError(
+                f"Diretório do índice FAISS não encontrado em '{FAISS_INDEX_PATH}'. "
+                "Por favor, execute o script 'ingest.py' primeiro para criar o índice."
+            )
+        print("✅ Carregando índice FAISS existente...")
+        embedding = HuggingFaceEmbeddings(model_name=EMBED_MODEL_ID)
+        vectorstore = FAISS.load_local(FAISS_INDEX_PATH, embedding, allow_dangerous_deserialization=True)
+        print("✅ Índice carregado com sucesso.")
+        return vectorstore
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar o índice FAISS: {e}")
+        return None  # ou algum outro valor padrão que faça sentido no seu contexto
 
-vectorstore = load_vector_store()
-retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
+# vectorstore = load_vector_store()
+# if vectorstore is not None:
+#     retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
+# else:
+#     retriever = None 
+#     print("⚠️ Continuando sem o vectorstore...")
 
 # 2. Criar o cliente do LLM
 client = ChatGroq(
@@ -63,50 +71,70 @@ def update_conversation_history(question, answer):
     conversation_history.append({"question": question, "answer": answer})
 
 def rag_chain(input_text: str):
-    """Executa a cadeia de RAG."""
+    vectorstore = load_vector_store()
+    if vectorstore is not None:
+        retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
+    else:
+        retriever = None 
+        print("⚠️ Continuando sem o vectorstore...")
+    """Executa a cadeia de RAG. Funciona mesmo sem o vectorstore carregado."""
+    try:
+        # Se não tivermos um retriever, usamos um contexto vazio
+        if retriever is None:
+            context = ""
+            context_docs = []
+        else:
+            original_docs = retriever.get_relevant_documents(input_text)
+            transformed_query = transform_query(input_text, conversation_history)
+            transformed_docs = retriever.get_relevant_documents(transformed_query)
 
-    original_docs = retriever.get_relevant_documents(input_text)
+            all_docs = original_docs + transformed_docs
+            unique_docs = []
+            seen_content = set()
 
+            for doc in all_docs:
+                if doc.page_content not in seen_content:
+                    seen_content.add(doc.page_content)
+                    unique_docs.append(doc)
+            
+            context_docs = unique_docs[:TOP_K*2]
+            context = "\n".join([doc.page_content for doc in context_docs])
+        
+        # Formata o histórico para o prompt
+        formatted_history = "\n".join([f"User: {turn['question']}\nAI: {turn['answer']}" for turn in conversation_history])
 
-    transformed_query = transform_query(input_text, conversation_history)
-    transformed_docs = retriever.get_relevant_documents(transformed_query)
+        final_prompt = PROMPT.format(context=context, input=input_text, conversation=formatted_history)
+        
+        response = client.invoke(final_prompt)
+        answer = response.content
+        
+        update_conversation_history(input_text, answer)
 
-    all_docs = original_docs + transformed_docs
-    unique_docs = []
-    seen_content = set()
+        # LOGs para depuração
+        print('='*50)
+        print(f"LLM: {GEN_MODEL_ID} | Embedding: {EMBED_MODEL_ID}")
+        print('='*50)
+        print(f"QUERY ORIGINAL: {input_text}")
+        if retriever is not None:
+            print(f"QUERY TRANSFORMADA: {transformed_query}")
+        else:
+            print("QUERY TRANSFORMADA: (não aplicável - sem vectorstore)")
+        print('='*50)
+        print(f"PROMPT ENVIADO:\n{final_prompt}")
+        print('='*50)
+        print(f"RESPOSTA RECEBIDA:\n{answer}")
+        print('='*50)
 
-    for doc in all_docs:
-        if doc.page_content not in seen_content:
-            seen_content.add(doc.page_content)
-            unique_docs.append(doc)
-    
-    context_docs = unique_docs[:TOP_K*2]
-    context = "\n".join([doc.page_content for doc in context_docs])
-    
-    # Formata o histórico para o prompt
-    formatted_history = "\n".join([f"User: {turn['question']}\nAI: {turn['answer']}" for turn in conversation_history])
-
-    final_prompt = PROMPT.format(context=context, input=input_text, conversation=formatted_history)
-    
-    response = client.invoke(final_prompt)
-    answer = response.content
-    
-    update_conversation_history(input_text, answer)
-
-    # LOGs para depuração
-    print('='*50)
-    print(f"LLM: {GEN_MODEL_ID} | Embedding: {EMBED_MODEL_ID}")
-    print('='*50)
-    print(f"QUERY ORIGINAL: {input_text}")
-    print(f"QUERY TRANSFORMADA: {transformed_query}")
-    print('='*50)
-    print(f"PROMPT ENVIADO:\n{final_prompt}")
-    print('='*50)
-    print(f"RESPOSTA RECEBIDA:\n{answer}")
-    print('='*50)
-
-    return {
-        "input": input_text,
-        "resposta": answer,
-        "contexto": context_docs
-    }
+        return {
+            "input": input_text,
+            "resposta": answer,
+            "contexto": context_docs if retriever is not None else []
+        }
+    except Exception as e:
+        print(f"⚠️ Erro durante o processamento RAG: {e}")
+        # Retorna uma resposta padrão em caso de erro
+        return {
+            "input": input_text,
+            "resposta": "Ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.",
+            "contexto": []
+        }
