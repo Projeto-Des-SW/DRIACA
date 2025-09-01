@@ -19,3 +19,4 @@ __pycache__
 /frontend/.vscode
 /frontend/.idea
 /frontend/.DS_Store
+frontend/.env
