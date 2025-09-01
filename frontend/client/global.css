@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  :root {
+    --background: 250 100% 99%;
+    --foreground: 220 20% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+
+    --primary: 210 100% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 220 20% 15%;
+
+    --muted: 220 20% 95%;
+    --muted-foreground: 220 10% 50%;
+
+    --accent: 210 100% 96%;
+    --accent-foreground: 210 100% 25%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 88%;
+    --input: 220 20% 95%;
+    --ring: 210 100% 45%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* University Brand Colors */
+    --university-blue: 210 100% 45%;
+    --university-blue-dark: 220 100% 35%;
+    --university-gold: 45 100% 50%;
+    --university-green: 140 60% 45%;
+    --university-navy: 220 50% 25%;
+
+    /* Chat Colors */
+    --chat-user: 210 100% 96%;
+    --chat-bot: 0 0% 98%;
+    --chat-input: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 220 30% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 30% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 30% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 100% 55%;
+    --primary-foreground: 220 30% 8%;
+
+    --secondary: 220 20% 15%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 220 20% 15%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 220 20% 15%;
+    --accent-foreground: 210 100% 55%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 15%;
+    --ring: 210 100% 55%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* University Brand Colors - Dark Mode */
+    --university-blue: 210 100% 55%;
+    --university-blue-dark: 220 100% 45%;
+    --university-gold: 45 100% 60%;
+    --university-green: 140 60% 55%;
+    --university-navy: 220 50% 35%;
+
+    /* Chat Colors - Dark Mode */
+    --chat-user: 210 100% 15%;
+    --chat-bot: 220 20% 12%;
+    --chat-input: 220 20% 15%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
