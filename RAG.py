@@ -127,6 +127,7 @@ def rag_chain(input_text: str):
 
         return {
             "input": input_text,
+            "transformed_query": transformed_query,
             "resposta": answer,
             "contexto": context_docs if retriever is not None else []
         }
@@ -135,6 +136,7 @@ def rag_chain(input_text: str):
         # Retorna uma resposta padrão em caso de erro
         return {
             "input": input_text,
+            "transformed_query": transformed_query,
             "resposta": "Ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.",
             "contexto": []
         }

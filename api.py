@@ -106,6 +106,7 @@ class QueryInput(BaseModel):
 
 class QueryOutput(BaseModel):
     input: str
+    transformed_query: str
     resposta: str
     contexto: List[DocumentResponse]
     timestamp: str
@@ -160,6 +161,7 @@ async def process_query(query: QueryInput, api_key: str = Depends(get_api_key)):
         
         response = QueryOutput(
             input=result["input"],
+            transformed_query=result["transformed_query"],
             resposta=result["resposta"],
             contexto=convert_documents_to_response(result["contexto"]),
             timestamp=datetime.now().isoformat(),
