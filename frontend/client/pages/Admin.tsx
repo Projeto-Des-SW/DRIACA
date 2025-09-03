@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Upload, 
@@ -15,7 +15,8 @@ import {
   Eye,
   Calendar,
   User,
-  Filter
+  Filter,
+  LogOut
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,12 +27,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import Login from '@/components/Login';
 
 interface Document {
   id: string;
   name: string;
   type: string;
-  // category: string;
   size: string;
   uploadDate: string;
   lastModified: string;
@@ -40,6 +41,24 @@ interface Document {
 }
 
 export default function Admin() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Verificar se o usuário está autenticado
+    const authStatus = localStorage.getItem('isAuthenticated') === 'true';
+    setIsAuthenticated(authStatus);
+    setIsLoading(false);
+  }, []);
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    setIsAuthenticated(false);
+  };
   const [documents, setDocuments] = useState<Document[]>([
     {
       id: '1',
@@ -148,6 +167,18 @@ export default function Admin() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-university-blue"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-university-blue/5">
       {/* Header */}
@@ -174,6 +205,15 @@ export default function Admin() {
                 <User className="w-3 h-3 mr-1" />
                 Admin
               </Badge>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleLogout}
+                className="flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sair
+              </Button>
               <ThemeToggle />
             </div>
           </div>

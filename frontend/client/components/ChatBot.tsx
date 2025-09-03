@@ -24,6 +24,7 @@ interface Source {
 
 interface APIResponse {
   input: string;
+  transformed_query: string;
   resposta: string;
   contexto: Source[];
 }
@@ -43,6 +44,7 @@ export function ChatBot() {
     }
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [transformedQuery, setTransformedQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
@@ -177,6 +179,9 @@ export function ChatBot() {
 
     try {
       const response = await callRAGAPI(inputValue);
+
+      console.log("response: ", response)
+      setTransformedQuery(response.transformed_query);
       
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -286,6 +291,7 @@ export function ChatBot() {
                     
                     {showSources && (
                       <div className="mt-2 p-3 rounded-md border">
+                        <h4 className="text-xs font-bold mb-4"> Input melhorado: {transformedQuery}</h4>
                         <h4 className="text-xs font-semibold mb-2">📚 Fontes da resposta:</h4>
                         {message.sources.map((source: Source, index: number) => (
                           <div key={index} className="mb-3 last:mb-0">
