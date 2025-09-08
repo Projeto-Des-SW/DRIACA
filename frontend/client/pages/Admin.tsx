@@ -16,7 +16,10 @@ import {
   Calendar,
   User,
   Filter,
-  LogOut
+  LogOut,
+  Play,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,99 +31,184 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import Login from '@/components/Login';
+import { toast } from 'sonner';
 
 interface Document {
   id: string;
-  name: string;
-  type: string;
-  size: string;
-  uploadDate: string;
-  lastModified: string;
-  status: 'active' | 'draft' | 'archived';
-  description: string;
+  filename: string;
+  path: string;
+  size: number;
+  last_modified: string;
+  status?: 'processed' | 'unprocessed';
+  description?: string;
 }
+
+interface ProcessedDocument {
+  content: string;
+  metadata: {
+    source: string;
+  };
+  length: number;
+}
+
+interface EnvStatus {
+  GROQ_API_KEY: string;
+  TOP_K: string;
+  EMBED_MODEL_ID: string;
+  GEN_MODEL_ID: string;
+  env_file_exists: boolean;
+}
+
+interface ProcessingStatus {
+  status: string;
+  processed_files: number;
+  total_files: number;
+}
+
+const API_BASE_URL = 'http://localhost:8000';
+const API_KEY = '123'; // Substitua pela sua chave API real
 
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
+  const [envStatus, setEnvStatus] = useState<EnvStatus | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isCreatingVectorStore, setIsCreatingVectorStore] = useState(false);
 
   useEffect(() => {
-    // Verificar se o usuário está autenticado
     const authStatus = localStorage.getItem('isAuthenticated') === 'true';
     setIsAuthenticated(authStatus);
     setIsLoading(false);
+
+    if (authStatus) {
+      fetchDocuments();
+      fetchProcessedDocuments();
+      fetchEnvStatus();
+    }
   }, []);
+
+  const fetchDocuments = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/`, {
+        headers: {
+          'accept': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data);
+      } else {
+        toast.error('Erro ao carregar documentos');
+      }
+    } catch (error) {
+      toast.error('Falha na conexão com o servidor');
+    }
+  };
+
+  const fetchProcessedDocuments = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/processed-documents/`, {
+        headers: {
+          'accept': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProcessedDocuments(data);
+        
+        // Extrair nomes de arquivos únicos para verificação de status
+        const uniqueFilenames = [...new Set(data.map((doc: ProcessedDocument) => 
+          doc.metadata.source.split('\\').pop() // Extrai apenas o nome do arquivo
+        ))];
+        
+        // Você pode usar isso para verificar quais documentos estão processados
+        console.log('Documentos processados:', uniqueFilenames);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar documentos processados:', error);
+    }
+  };
+
+  const isDocumentProcessed = (filename: string) => {
+    return processedDocuments.some(doc => 
+      doc.metadata.source.includes(filename)
+    );
+  };
+
+  const getProcessedDocInfo = (filename: string) => {
+    const docs = processedDocuments.filter(doc => 
+      doc.metadata.source.includes(filename)
+    );
+    return {
+      chunks: docs.length,
+      totalLength: docs.reduce((total, doc) => total + doc.length, 0)
+    };
+  };
+
+  const fetchEnvStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/env-status`, {
+        headers: {
+          'x-api-key': API_KEY,
+          'accept': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setEnvStatus(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar status do ambiente:', error);
+    }
+  };
+
+  const checkProcessingStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/status/`, {
+        headers: {
+          'accept': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProcessingStatus(data);
+        
+        if (data.status === 'processing') {
+          // Continua verificando até terminar
+          setTimeout(checkProcessingStatus, 2000);
+        } else if (data.status === 'completed') {
+          setIsProcessing(false);
+          fetchProcessedDocuments();
+          toast.success('Processamento concluído!');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+      setIsProcessing(false);
+    }
+  };
 
   const handleLogin = () => {
     setIsAuthenticated(true);
+    fetchDocuments();
+    fetchProcessedDocuments();
+    fetchEnvStatus();
   };
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
     setIsAuthenticated(false);
   };
-  const [documents, setDocuments] = useState<Document[]>([
-    {
-      id: '1',
-      name: 'Regulamento Acadêmico 2024',
-      type: 'PDF',
-      // category: 'Regulamentos',
-      size: '2.5 MB',
-      uploadDate: '2024-01-15',
-      lastModified: '2024-01-20',
-      status: 'active',
-      description: 'Regulamento completo dos cursos de graduação'
-    },
-    {
-      id: '2',
-      name: 'Calendário Acadêmico',
-      type: 'PDF',
-      // category: 'Calendários',
-      size: '1.2 MB',
-      uploadDate: '2024-01-10',
-      lastModified: '2024-01-18',
-      status: 'active',
-      description: 'Datas importantes do ano letivo 2024'
-    },
-    {
-      id: '3',
-      name: 'Manual da Biblioteca',
-      type: 'DOCX',
-      // category: 'Manuais',
-      size: '890 KB',
-      uploadDate: '2024-01-08',
-      lastModified: '2024-01-12',
-      status: 'draft',
-      description: 'Instruções para uso dos serviços da biblioteca'
-    },
-    {
-      id: '4',
-      name: 'Processo de Matrícula',
-      type: 'PDF',
-      // category: 'Processos',
-      size: '1.8 MB',
-      uploadDate: '2024-01-05',
-      lastModified: '2024-01-15',
-      status: 'active',
-      description: 'Passo a passo para matrícula de novos alunos'
-    }
-  ]);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [isUploading, setIsUploading] = useState(false);
-
-  const categories = ['Regulamentos', 'Calendários', 'Manuais', 'Processos', 'Formulários'];
-  
-  const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all';
-    const matchesStatus = selectedStatus === 'all' || doc.status === selectedStatus;
-    
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -128,43 +216,146 @@ export default function Admin() {
 
     setIsUploading(true);
     
-    // Simular upload
-    setTimeout(() => {
+    try {
+      const formData = new FormData();
       Array.from(files).forEach(file => {
-        const newDoc: Document = {
-          id: Date.now().toString(),
-          name: file.name,
-          type: file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN',
-          // category: 'Manuais',
-          size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-          uploadDate: new Date().toISOString().split('T')[0],
-          lastModified: new Date().toISOString().split('T')[0],
-          status: 'draft',
-          description: 'Documento adicionado recentemente'
-        };
-        setDocuments(prev => [newDoc, ...prev]);
+        formData.append('file', file);
       });
+
+      const response = await fetch(`${API_BASE_URL}/api/documents/`, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        toast.success('Arquivo(s) enviado(s) com sucesso!');
+        fetchDocuments(); // Atualiza a lista de documentos
+      } else {
+        toast.error('Erro ao enviar arquivo(s)');
+      }
+    } catch (error) {
+      toast.error('Falha no upload');
+    } finally {
       setIsUploading(false);
-    }, 2000);
-  };
-
-  const deleteDocument = (id: string) => {
-    setDocuments(prev => prev.filter(doc => doc.id !== id));
-  };
-
-  const updateDocumentStatus = (id: string, status: 'active' | 'draft' | 'archived') => {
-    setDocuments(prev => prev.map(doc => 
-      doc.id === id ? { ...doc, status, lastModified: new Date().toISOString().split('T')[0] } : doc
-    ));
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-university-green/10 text-university-green border-university-green/20';
-      case 'draft': return 'bg-university-gold/10 text-university-gold border-university-gold/20';
-      case 'archived': return 'bg-muted text-muted-foreground border-border';
-      default: return 'bg-muted text-muted-foreground border-border';
     }
+  };
+
+  const deleteDocument = async (filename: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-api-key': API_KEY,
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Documento deletado com sucesso!');
+        fetchDocuments(); // Atualiza a lista
+      } else {
+        toast.error('Erro ao deletar documento');
+      }
+    } catch (error) {
+      toast.error('Falha ao deletar documento');
+    }
+  };
+
+  const processDocuments = async () => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/process/`, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Processamento iniciado!');
+        // Inicia a verificação do status
+        setTimeout(checkProcessingStatus, 1000);
+      } else {
+        toast.error('Erro ao iniciar processamento');
+        setIsProcessing(false);
+      }
+    } catch (error) {
+      toast.error('Falha ao iniciar processamento');
+      setIsProcessing(false);
+    }
+  };
+
+  const createVectorStore = async () => {
+    setIsCreatingVectorStore(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/create-vector-store`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Vector Store criado com sucesso!');
+      } else {
+        toast.error('Erro ao criar Vector Store');
+      }
+    } catch (error) {
+      toast.error('Falha ao criar Vector Store');
+    } finally {
+      setIsCreatingVectorStore(false);
+    }
+  };
+
+  const updateEnvSettings = async (settings: Partial<EnvStatus>) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/update-env`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+        },
+        body: JSON.stringify(settings)
+      });
+
+      if (response.ok) {
+        toast.success('Configurações atualizadas!');
+        fetchEnvStatus(); // Atualiza o status
+      } else {
+        toast.error('Erro ao atualizar configurações');
+      }
+    } catch (error) {
+      toast.error('Falha ao atualizar configurações');
+    }
+  };
+
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = doc.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (doc.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = selectedStatus === 'all' || 
+                         (selectedStatus === 'processed' && processedDocuments.some(p => p.metadata.source === doc.filename)) ||
+                         (selectedStatus === 'unprocessed' && !processedDocuments.some(p => p.metadata.source === doc.filename));
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const getStatusColor = (filename: string) => {
+    const isProcessed = isDocumentProcessed(filename);
+    return isProcessed 
+      ? 'bg-university-green/10 text-university-green border-university-green/20'
+      : 'bg-university-gold/10 text-university-gold border-university-gold/20';
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   if (isLoading) {
@@ -230,8 +421,47 @@ export default function Admin() {
 
           {/* Documents Tab */}
           <TabsContent value="documents" className="space-y-6">
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <Button 
+                onClick={processDocuments} 
+                disabled={isProcessing || documents.length === 0}
+                className="flex items-center gap-2"
+              >
+                {isProcessing ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+                {isProcessing ? 'Processando...' : 'Processar Documentos'}
+              </Button>
+              
+              <Button 
+                onClick={createVectorStore} 
+                disabled={isCreatingVectorStore || processedDocuments.length === 0}
+                className="flex items-center gap-2"
+                variant="outline"
+              >
+                {isCreatingVectorStore ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Database className="w-4 h-4" />
+                )}
+                {isCreatingVectorStore ? 'Criando...' : 'Criar Vector Store'}
+              </Button>
+
+              {processingStatus && (
+                <Badge variant="secondary" className="ml-auto">
+                  {processingStatus.status === 'processing' 
+                    ? `Processando: ${processingStatus.processed_files}/${processingStatus.total_files}`
+                    : processingStatus.status
+                  }
+                </Badge>
+              )}
+            </div>
+
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Total de Documentos</CardTitle>
@@ -242,34 +472,24 @@ export default function Admin() {
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Ativos</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Processados</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-university-green">
-                    {documents.filter(d => d.status === 'active').length}
+                    {documents.filter(d => isDocumentProcessed(d.filename)).length}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Rascunhos</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Pendentes</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-university-gold">
-                    {documents.filter(d => d.status === 'draft').length}
+                    {documents.filter(d => !isDocumentProcessed(d.filename)).length}
                   </div>
                 </CardContent>
               </Card>
-              {/* <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Categorias</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-university-navy">
-                    {/* {new Set(documents.map(d => d.category)).size} */}
-                  {/* </div> */}
-                {/* </CardContent> */}
-              {/* </Card> */}
             </div>
 
             {/* Filters */}
@@ -281,35 +501,21 @@ export default function Admin() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-21 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="search">Buscar</Label>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
                         id="search"
-                        placeholder="Nome ou descrição..."
+                        placeholder="Nome do arquivo..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 max-w-md" 
+                        className="pl-10" 
                       />
                     </div>
                   </div>
-                  {/* <div>
-                    <Label htmlFor="category">Categoria</Label>
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Todas as categorias" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas as categorias</SelectItem>
-                        {categories.map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div> */}
-                  {/* <div>
+                  <div>
                     <Label htmlFor="status">Status</Label>
                     <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                       <SelectTrigger>
@@ -317,25 +523,11 @@ export default function Admin() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos os status</SelectItem>
-                        <SelectItem value="active">Ativo</SelectItem>
-                        <SelectItem value="draft">Rascunho</SelectItem>
-                        <SelectItem value="archived">Arquivado</SelectItem>
+                        <SelectItem value="processed">Processados</SelectItem>
+                        <SelectItem value="unprocessed">Não Processados</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div> */}
-                  {/* <div className="flex items-end">
-                    <Button
-                      onClick={() => {
-                        setSearchTerm('');
-                        setSelectedCategory('all');
-                        setSelectedStatus('all');
-                      }}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Limpar Filtros
-                    </Button>
-                  </div> */}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -348,64 +540,66 @@ export default function Admin() {
                     <FileText className="w-5 h-5" />
                     Documentos ({filteredDocuments.length})
                   </span>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={fetchDocuments}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Atualizar
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {filteredDocuments.map((doc) => (
-                    <div key={doc.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <FileText className="w-5 h-5 text-university-blue" />
-                            <h3 className="font-semibold">{doc.name}</h3>
-                            <Badge className={getStatusColor(doc.status)}>
-                              {doc.status === 'active' ? 'Ativo' : doc.status === 'draft' ? 'Rascunho' : 'Arquivado'}
-                            </Badge>
-                            <Badge variant="outline">{doc.type}</Badge>
-                            {/* <Badge variant="secondary">{doc.category}</Badge> */}
+                  {filteredDocuments.map((doc) => {
+                    const isProcessed = isDocumentProcessed(doc.filename);
+                    const processedInfo = isProcessed ? getProcessedDocInfo(doc.filename) : null;
+                    
+                    return (
+                      <div key={doc.filename} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <FileText className="w-5 h-5 text-university-blue" />
+                              <h3 className="font-semibold">{doc.filename}</h3>
+                              <Badge className={getStatusColor(doc.filename)}>
+                                {isProcessed ? 'Processado' : 'Não Processado'}
+                              </Badge>
+                            </div>
+                            {isProcessed && processedInfo && (
+                              <p className="text-sm text-muted-foreground mb-2">
+                                Total de caracteres: {processedInfo.totalLength}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                Modificado: {new Date(doc.last_modified).toLocaleDateString('pt-BR')}
+                              </span>
+                              <span>Tamanho: {formatFileSize(doc.size)}</span>
+                            </div>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-2">{doc.description}</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              Upload: {new Date(doc.uploadDate).toLocaleDateString('pt-BR')}
-                            </span>
-                            <span>Tamanho: {doc.size}</span>
-                            <span>Modificado: {new Date(doc.lastModified).toLocaleDateString('pt-BR')}</span>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button size="sm" variant="outline">
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => deleteDocument(doc.filename)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button size="sm" variant="outline">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Select value={doc.status} onValueChange={(value: any) => updateDocumentStatus(doc.id, value)}>
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="active">Ativo</SelectItem>
-                              <SelectItem value="draft">Rascunho</SelectItem>
-                              <SelectItem value="archived">Arquivado</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button 
-                            size="sm" 
-                            variant="destructive"
-                            onClick={() => deleteDocument(doc.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   
                   {filteredDocuments.length === 0 && (
                     <div className="text-center py-12">
@@ -451,47 +645,22 @@ export default function Admin() {
                     </label>
                   </Button>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Formatos aceitos: PDF, DOC, DOCX, TXT (máx. 10MB cada)
+                    Formatos aceitos: PDF, DOC, DOCX, TXT
                   </p>
                 </div>
 
                 {/* Upload Form */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
-                    {/* <div>
-                      <Label htmlFor="doc-category">Categoria</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma categoria" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map(cat => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div> */}
                     <div>
-                      <Label htmlFor="doc-status">Status Inicial</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="draft">Rascunho</SelectItem>
-                          <SelectItem value="active">Ativo</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="doc-description">Descrição</Label>
+                      <Textarea
+                        id="doc-description"
+                        placeholder="Descreva o conteúdo do documento..."
+                        className="resize-none"
+                        rows={4}
+                      />
                     </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="doc-description">Descrição</Label>
-                    <Textarea
-                      id="doc-description"
-                      placeholder="Descreva o conteúdo do documento..."
-                      className="resize-none"
-                      rows={4}
-                    />
                   </div>
                 </div>
               </CardContent>
@@ -513,40 +682,76 @@ export default function Admin() {
                     <h3 className="text-lg font-semibold">Processamento</h3>
                     <div>
                       <Label htmlFor="chunk-size">Tamanho do Chunk</Label>
-                      <Input id="chunk-size" defaultValue="1000" type="number" />
+                      <Input 
+                        id="chunk-size" 
+                        defaultValue="1000" 
+                        type="number" 
+                        onChange={(e) => updateEnvSettings({ TOP_K: e.target.value })}
+                      />
                       <p className="text-xs text-muted-foreground mt-1">
                         Número de caracteres por fragmento de texto
                       </p>
                     </div>
-                    <div>
-                      <Label htmlFor="overlap">Sobreposição</Label>
-                      <Input id="overlap" defaultValue="200" type="number" />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Caracteres de sobreposição entre chunks
-                      </p>
-                    </div>
                   </div>
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Busca</h3>
+                    <h3 className="text-lg font-semibold">Modelos</h3>
                     <div>
-                      <Label htmlFor="similarity-threshold">Modelo de embedding</Label>
-                      <Input id="similarity-threshold" defaultValue="Qwen/Qwen3-Embedding-0.6B" type="text" />
+                      <Label htmlFor="embed-model">Modelo de Embedding</Label>
+                      <Input 
+                        id="embed-model" 
+                        defaultValue={envStatus?.EMBED_MODEL_ID || ''}
+                        onChange={(e) => updateEnvSettings({ EMBED_MODEL_ID: e.target.value })}
+                      />
                       <p className="text-xs text-muted-foreground mt-1">
                         Modelo responsável por criar o banco de dados vetorial
                       </p>
                     </div>
                     <div>
-                      <Label htmlFor="max-results">Máximo de Resultados</Label>
-                      <Input id="max-results" defaultValue="5" type="number" />
+                      <Label htmlFor="gen-model">Modelo de Geração</Label>
+                      <Input 
+                        id="gen-model" 
+                        defaultValue={envStatus?.GEN_MODEL_ID || ''}
+                        onChange={(e) => updateEnvSettings({ GEN_MODEL_ID: e.target.value })}
+                      />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Número máximo de documentos a retornar
+                        Modelo LLM para geração de respostas
                       </p>
                     </div>
                   </div>
                 </div>
+                
+                {envStatus && (
+                  <div className="pt-6 border-t">
+                    <h3 className="text-lg font-semibold mb-4">Status do Ambiente</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">GROQ_API_KEY:</span>{' '}
+                        {envStatus.GROQ_API_KEY === '***' ? 'Configurada' : 'Não configurada'}
+                      </div>
+                      <div>
+                        <span className="font-medium">Arquivo .env:</span>{' '}
+                        {envStatus.env_file_exists ? 'Presente' : 'Ausente'}
+                      </div>
+                      <div>
+                        <span className="font-medium">TOP_K:</span> {envStatus.TOP_K}
+                      </div>
+                      <div>
+                        <span className="font-medium">Embed Model:</span> {envStatus.EMBED_MODEL_ID}
+                      </div>
+                      <div>
+                        <span className="font-medium">Gen Model:</span> {envStatus.GEN_MODEL_ID}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="pt-6 border-t">
-                  <Button className="bg-university-blue hover:bg-university-blue-dark">
-                    Salvar Configurações
+                  <Button 
+                    className="bg-university-blue hover:bg-university-blue-dark"
+                    onClick={() => fetchEnvStatus()}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Atualizar Status
                   </Button>
                 </div>
               </CardContent>
