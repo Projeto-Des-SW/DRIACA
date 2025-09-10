@@ -19,7 +19,9 @@ import {
   LogOut,
   Play,
   Database,
-  RefreshCw
+  RefreshCw,
+  FolderOpen,
+  Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +67,22 @@ interface ProcessingStatus {
   total_files: number;
 }
 
+interface Base {
+  name: string;
+  description: string;
+  documents_dir: string;
+  faiss_index_path: string;
+  output_docs_file: string;
+}
+
+interface BaseConfig {
+  base_name: string;
+  documents_dir: string;
+  faiss_index_path: string;
+  output_docs_file: string;
+  description?: string;
+}
+
 const API_BASE_URL = 'http://localhost:8000';
 const API_KEY = '123'; // Substitua pela sua chave API real
 
@@ -80,6 +98,17 @@ export default function Admin() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCreatingVectorStore, setIsCreatingVectorStore] = useState(false);
+  const [availableBases, setAvailableBases] = useState<Base[]>([]);
+  const [selectedBase, setSelectedBase] = useState<string>('default');
+  const [isCreatingBase, setIsCreatingBase] = useState(false);
+  const [newBaseConfig, setNewBaseConfig] = useState<BaseConfig>({
+    base_name: '',
+    documents_dir: '',
+    faiss_index_path: '',
+    output_docs_file: '',
+    description: ''
+  });
+  const [isSwitchingBase, setIsSwitchingBase] = useState(false);
 
   useEffect(() => {
     const authStatus = localStorage.getItem('isAuthenticated') === 'true';
@@ -87,16 +116,66 @@ export default function Admin() {
     setIsLoading(false);
 
     if (authStatus) {
+      fetchBases();
       fetchDocuments();
       fetchProcessedDocuments();
       fetchEnvStatus();
     }
   }, []);
 
+  useEffect(() => {
+    if (isAuthenticated && selectedBase) {
+      fetchDocuments();
+      fetchProcessedDocuments();
+    }
+  }, [selectedBase, isAuthenticated]);
+
+  const fetchBases = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/bases/`, {
+        headers: {
+          'x-api-key': API_KEY,
+          'accept': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const bases = Object.entries(data.bases_config || {}).map(([name, config]: [string, any]) => ({
+          name,
+          description: config.description || name,
+          documents_dir: config.documents_dir,
+          faiss_index_path: config.faiss_index_path,
+          output_docs_file: config.output_docs_file
+        }));
+        setAvailableBases(bases);
+        
+        if (bases.length > 0 && !selectedBase) {
+          setSelectedBase(bases[0].name);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar bases:', error);
+      // Fallback para bases padrão
+      setAvailableBases([
+        {
+          name: 'default',
+          description: 'Base padrão',
+          documents_dir: 'documents',
+          faiss_index_path: 'faiss_index',
+          output_docs_file: 'processed_docs.pkl'
+        }
+      ]);
+    }
+  };
+
   const fetchDocuments = async () => {
+    if (!selectedBase) return;
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/`, {
         headers: {
+          'x-api-key': API_KEY,
           'accept': 'application/json',
         }
       });
@@ -113,9 +192,12 @@ export default function Admin() {
   };
 
   const fetchProcessedDocuments = async () => {
+    if (!selectedBase) return;
+    
     try {
       const response = await fetch(`${API_BASE_URL}/processed-documents/`, {
         headers: {
+          'x-api-key': API_KEY,
           'accept': 'application/json',
         }
       });
@@ -123,14 +205,6 @@ export default function Admin() {
       if (response.ok) {
         const data = await response.json();
         setProcessedDocuments(data);
-        
-        // Extrair nomes de arquivos únicos para verificação de status
-        const uniqueFilenames = [...new Set(data.map((doc: ProcessedDocument) => 
-          doc.metadata.source.split('\\').pop() // Extrai apenas o nome do arquivo
-        ))];
-        
-        // Você pode usar isso para verificar quais documentos estão processados
-        console.log('Documentos processados:', uniqueFilenames);
       }
     } catch (error) {
       console.error('Erro ao carregar documentos processados:', error);
@@ -175,6 +249,7 @@ export default function Admin() {
     try {
       const response = await fetch(`${API_BASE_URL}/status/`, {
         headers: {
+          'x-api-key': API_KEY,
           'accept': 'application/json',
         }
       });
@@ -184,7 +259,6 @@ export default function Admin() {
         setProcessingStatus(data);
         
         if (data.status === 'processing') {
-          // Continua verificando até terminar
           setTimeout(checkProcessingStatus, 2000);
         } else if (data.status === 'completed') {
           setIsProcessing(false);
@@ -200,6 +274,7 @@ export default function Admin() {
 
   const handleLogin = () => {
     setIsAuthenticated(true);
+    fetchBases();
     fetchDocuments();
     fetchProcessedDocuments();
     fetchEnvStatus();
@@ -225,6 +300,7 @@ export default function Admin() {
       const response = await fetch(`${API_BASE_URL}/api/documents/`, {
         method: 'POST',
         headers: {
+          'x-api-key': API_KEY,
           'accept': 'application/json',
         },
         body: formData
@@ -232,7 +308,7 @@ export default function Admin() {
 
       if (response.ok) {
         toast.success('Arquivo(s) enviado(s) com sucesso!');
-        fetchDocuments(); // Atualiza a lista de documentos
+        fetchDocuments();
       } else {
         toast.error('Erro ao enviar arquivo(s)');
       }
@@ -254,7 +330,7 @@ export default function Admin() {
 
       if (response.ok) {
         toast.success('Documento deletado com sucesso!');
-        fetchDocuments(); // Atualiza a lista
+        fetchDocuments();
       } else {
         toast.error('Erro ao deletar documento');
       }
@@ -269,13 +345,13 @@ export default function Admin() {
       const response = await fetch(`${API_BASE_URL}/process/`, {
         method: 'POST',
         headers: {
+          'x-api-key': API_KEY,
           'accept': 'application/json',
         }
       });
 
       if (response.ok) {
         toast.success('Processamento iniciado!');
-        // Inicia a verificação do status
         setTimeout(checkProcessingStatus, 1000);
       } else {
         toast.error('Erro ao iniciar processamento');
@@ -293,6 +369,7 @@ export default function Admin() {
       const response = await fetch(`${API_BASE_URL}/create-vector-store`, {
         method: 'POST',
         headers: {
+          'x-api-key': API_KEY,
           'Content-Type': 'application/json',
           'accept': 'application/json',
         }
@@ -310,6 +387,89 @@ export default function Admin() {
     }
   };
 
+  const createNewBase = async () => {
+    setIsCreatingBase(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/bases/`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+        },
+        body: JSON.stringify(newBaseConfig)
+      });
+
+      if (response.ok) {
+        toast.success('Base criada com sucesso!');
+        setNewBaseConfig({
+          base_name: '',
+          documents_dir: '',
+          faiss_index_path: '',
+          output_docs_file: '',
+          description: ''
+        });
+        fetchBases();
+      } else {
+        toast.error('Erro ao criar base');
+      }
+    } catch (error) {
+      toast.error('Falha ao criar base');
+    } finally {
+      setIsCreatingBase(false);
+    }
+  };
+
+  const deleteBase = async (baseName: string) => {
+    if (baseName === 'default') {
+      toast.error('Não é possível deletar a base padrão');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/bases/${baseName}`, {
+        method: 'DELETE',
+        headers: {
+          'x-api-key': API_KEY,
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Base deletada com sucesso!');
+        fetchBases();
+      } else {
+        toast.error('Erro ao deletar base');
+      }
+    } catch (error) {
+      toast.error('Falha ao deletar base');
+    }
+  };
+
+  const switchBase = async (baseName: string) => {
+    setIsSwitchingBase(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/bases/switch`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ base_name: baseName })
+      });
+
+      if (response.ok) {
+        setSelectedBase(baseName);
+        toast.success(`Base alterada para: ${baseName}`);
+      } else {
+        toast.error('Erro ao mudar de base');
+      }
+    } catch (error) {
+      toast.error('Falha ao mudar de base');
+    } finally {
+      setIsSwitchingBase(false); 
+    }
+  };
+
   const updateEnvSettings = async (settings: Partial<EnvStatus>) => {
     try {
       const response = await fetch(`${API_BASE_URL}/update-env`, {
@@ -324,7 +484,7 @@ export default function Admin() {
 
       if (response.ok) {
         toast.success('Configurações atualizadas!');
-        fetchEnvStatus(); // Atualiza o status
+        fetchEnvStatus();
       } else {
         toast.error('Erro ao atualizar configurações');
       }
@@ -413,14 +573,54 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="documents" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="documents">Documentos</TabsTrigger>
             <TabsTrigger value="upload">Upload</TabsTrigger>
+            <TabsTrigger value="bases">Bases</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
           {/* Documents Tab */}
           <TabsContent value="documents" className="space-y-6">
+            {/* Base Selector */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="w-5 h-5" />
+                  Seleção de Base
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Select value={selectedBase} onValueChange={switchBase} disabled={isSwitchingBase}>
+                      <SelectTrigger>
+                        {isSwitchingBase ? (
+                          <div className="flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Alternando base...</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder="Selecionar base..." />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableBases.map((base) => (
+                          <SelectItem key={base.name} value={base.name}>
+                            {base.description}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Badge variant="outline" className="flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    {selectedBase ? availableBases.find(b => b.name === selectedBase)?.documents_dir : 'Nenhuma base selecionada'}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Action Buttons */}
             <div className="flex gap-4">
               <Button 
@@ -487,6 +687,16 @@ export default function Admin() {
                 <CardContent>
                   <div className="text-2xl font-bold text-university-gold">
                     {documents.filter(d => !isDocumentProcessed(d.filename)).length}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Base Atual</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-university-blue">
+                    {selectedBase}
                   </div>
                 </CardContent>
               </Card>
@@ -626,6 +836,30 @@ export default function Admin() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Base Selector */}
+                <div>
+                  <Label>Base de Destino</Label>
+                  <Select value={selectedBase} onValueChange={switchBase} disabled={isSwitchingBase}>
+                    <SelectTrigger>
+                      {isSwitchingBase ? (
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Alternando base...</span>
+                        </div>
+                      ) : (
+                        <SelectValue placeholder="Selecionar base..." />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBases.map((base) => (
+                        <SelectItem key={base.name} value={base.name}>
+                          {base.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Upload Area */}
                 <div className="border-2 border-dashed border-university-blue/30 rounded-lg p-8 text-center hover:border-university-blue/50 transition-colors">
                   <Upload className="w-12 h-12 text-university-blue mx-auto mb-4" />
@@ -661,6 +895,122 @@ export default function Admin() {
                         rows={4}
                       />
                     </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Bases Tab */}
+          <TabsContent value="bases" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="w-5 h-5" />
+                  Gerenciamento de Bases
+                </CardTitle>
+                <CardDescription>
+                  Crie e gerencie diferentes bases de conhecimento
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Create New Base */}
+                <div className="border rounded-lg p-6">
+                  <h3 className="text-lg font-semibold mb-4">Criar Nova Base</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="base-name">Nome da Base*</Label>
+                      <Input
+                        id="base-name"
+                        value={newBaseConfig.base_name}
+                        onChange={(e) => setNewBaseConfig({...newBaseConfig, base_name: e.target.value})}
+                        placeholder="ex: base_academica"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="base-description">Descrição</Label>
+                      <Input
+                        id="base-description"
+                        value={newBaseConfig.description || ''}
+                        onChange={(e) => setNewBaseConfig({...newBaseConfig, description: e.target.value})}
+                        placeholder="Descrição da base"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="base-documents-dir">Diretório de Documentos*</Label>
+                      <Input
+                        id="base-documents-dir"
+                        value={newBaseConfig.documents_dir}
+                        onChange={(e) => setNewBaseConfig({...newBaseConfig, documents_dir: e.target.value})}
+                        placeholder="ex: bases/academica/documents"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="base-faiss-path">Caminho do Índice FAISS*</Label>
+                      <Input
+                        id="base-faiss-path"
+                        value={newBaseConfig.faiss_index_path}
+                        onChange={(e) => setNewBaseConfig({...newBaseConfig, faiss_index_path: e.target.value})}
+                        placeholder="ex: bases/academica/faiss_index"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="base-output-file">Arquivo de Saída*</Label>
+                      <Input
+                        id="base-output-file"
+                        value={newBaseConfig.output_docs_file}
+                        onChange={(e) => setNewBaseConfig({...newBaseConfig, output_docs_file: e.target.value})}
+                        placeholder="ex: bases/academica/processed_docs.pkl"
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={createNewBase} 
+                    disabled={isCreatingBase || !newBaseConfig.base_name || !newBaseConfig.documents_dir || !newBaseConfig.faiss_index_path || !newBaseConfig.output_docs_file}
+                    className="mt-4"
+                  >
+                    {isCreatingBase ? 'Criando...' : 'Criar Base'}
+                  </Button>
+                </div>
+
+                {/* Existing Bases */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Bases Existentes</h3>
+                  <div className="space-y-4">
+                    {availableBases.map((base) => (
+                      <div key={base.name} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold">{base.description}</h4>
+                            <p className="text-sm text-muted-foreground">Nome: {base.name}</p>
+                            <div className="text-xs text-muted-foreground mt-2">
+                              <p>Documentos: {base.documents_dir}</p>
+                              <p>Índice: {base.faiss_index_path}</p>
+                              <p>Arquivo processado: {base.output_docs_file}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => switchBase(base.name)}
+                              disabled={selectedBase === base.name}
+                            >
+                              {selectedBase === base.name ? 'Selecionada' : 'Selecionar'}
+                            </Button>
+                            {base.name !== 'default' && (
+                              <Button 
+                                size="sm" 
+                                variant="destructive"
+                                onClick={() => deleteBase(base.name)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CardContent>

@@ -1,10 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, BookOpen, GraduationCap, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Send, Bot, User, BookOpen, GraduationCap, Search, Sparkles, Trash2, Database } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface Message {
   id: string;
@@ -27,11 +34,17 @@ interface APIResponse {
   transformed_query: string;
   resposta: string;
   contexto: Source[];
+  base_used?: string;
 }
 
 interface ResetResponse {
   status: string;
   message: string;
+}
+
+interface Base {
+  name: string;
+  description: string;
 }
 
 export function ChatBot() {
@@ -49,7 +62,11 @@ export function ChatBot() {
   const [isResetting, setIsResetting] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
   const [showSources, setShowSources] = useState(false);
+  const [availableBases, setAvailableBases] = useState<Base[]>([]);
+  const [selectedBase, setSelectedBase] = useState<string>('default');
+  const [isLoadingBases, setIsLoadingBases] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isSwitchingBase, setIsSwitchingBase] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,6 +75,11 @@ export function ChatBot() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    // Carregar bases disponíveis ao inicializar
+    fetchAvailableBases();
+  }, []);
 
   const suggestedQuestions = [
     'Onde envio atestado médico ?',
@@ -70,6 +92,76 @@ export function ChatBot() {
 
   const API_URL = import.meta.env.VITE_RAG_API_URL;
   const API_KEY = import.meta.env.VITE_RAG_API_KEY;
+
+  const fetchAvailableBases = async () => {
+    try {
+      const basesUrl = API_URL.replace('/query', '/bases');
+      const response = await fetch(basesUrl, {
+        method: 'GET',
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao carregar bases: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAvailableBases(data.bases_config ? Object.keys(data.bases_config).map(key => ({
+        name: key,
+        description: data.bases_config[key].description || key
+      })) : []);
+      
+    } catch (error) {
+      console.error('Erro ao carregar bases:', error);
+      // Fallback para bases padrão
+      setAvailableBases([
+        { name: 'default', description: 'Base padrão' },
+        { name: 'base_academica', description: 'Base acadêmica' },
+        { name: 'base_administrativa', description: 'Base administrativa' }
+      ]);
+    } finally {
+      setIsLoadingBases(false);
+    }
+  };
+
+  const switchBase = async (baseName: string) => {
+    try {
+      const switchUrl = API_URL.replace('/query', '/bases/switch');
+      const response = await fetch(switchUrl, {
+        method: 'POST',
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ base_name: baseName })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao mudar base: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSelectedBase(baseName);
+      
+      // Adicionar mensagem informativa sobre a mudança de base
+      const baseMessage: Message = {
+        id: Date.now().toString(),
+        content: `Base alterada para: ${baseName}. Agora estou usando os documentos desta base para responder suas perguntas.`,
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, baseMessage]);
+      
+      return data;
+    } catch (error) {
+      console.error('Erro ao mudar base:', error);
+      throw error;
+    }
+  };
 
   const callRAGAPI = async (question: string): Promise<APIResponse> => {
     try {
@@ -100,7 +192,6 @@ export function ChatBot() {
 
   const resetConversation = async (): Promise<ResetResponse> => {
     try {
-      // A URL para resetar a conversa é a base da API + /reset-conversation
       const resetUrl = API_URL.replace('/query', '/reset-conversation');
       
       const response = await fetch(resetUrl, {
@@ -126,10 +217,8 @@ export function ChatBot() {
   const handleResetConversation = async () => {
     setIsResetting(true);
     try {
-      // Chamar a API para resetar a conversa no backend
       await resetConversation();
       
-      // Resetar o estado local da conversa
       setMessages([
         {
           id: Date.now().toString(),
@@ -141,15 +230,13 @@ export function ChatBot() {
       setSources([]);
       setShowSources(false);
       
-      // Mostrar mensagem de sucesso
       console.log('Conversa resetada com sucesso!');
       
     } catch (error) {
-      // Em caso de erro, ainda resetar localmente mas mostrar mensagem
       setMessages([
         {
           id: Date.now().toString(),
-          content: 'Olá! Sou o assistente acadêmico da universidade. Como posso ajudá-lo hoje? Posso responder dúvidas sobre pesquisa, comprovante de matricula, estagio obrigatorio, solicitação de documentos e muito mais!',
+          content: 'Olá! Sou o assistente acadêmico da universidade. Como posso ajudá-lo hoje? Posso responder dúvidas sobre pesquisa, comprovante de matricula, estagio obrigatorio, solicitação de documentos e muito more!',
           sender: 'bot',
           timestamp: new Date(),
         }
@@ -222,11 +309,24 @@ export function ChatBot() {
     setShowSources(!showSources);
   };
 
+  const handleBaseChange = async (baseName: string) => {
+    setIsSwitchingBase(true);
+    try {
+      await switchBase(baseName);
+    } catch (error) {
+      console.error('Erro ao mudar base:', error);
+      // Reverter para base anterior em caso de erro
+      setSelectedBase(selectedBase);
+    } finally {
+      setIsSwitchingBase(false); // Finaliza o loading
+    }
+  };
+
   return (
     <div className="flex flex-col h-full max-w-10x2 mx-auto bg-background border rounded-xl shadow-lg">
-      {/* Header com botão de reset */}
+      {/* Header com botão de reset e seletor de base */}
       <div className="p-6 border-b bg-gradient-to-r from-university-blue to-university-blue-dark text-white rounded-t-xl">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-3">
           <div className="p-2 bg-white/20 rounded-full">
             <GraduationCap className="w-6 h-6" />
           </div>
@@ -240,7 +340,6 @@ export function ChatBot() {
               Online
             </Badge>
             
-            {/* Botão para resetar conversa */}
             <Button
               onClick={handleResetConversation}
               disabled={isResetting || messages.length <= 1}
@@ -253,6 +352,41 @@ export function ChatBot() {
               {isResetting ? 'Resetando...' : 'Resetar'}
             </Button>
           </div>
+        </div>
+
+        {/* Seletor de Base */}
+        <div className="flex items-center gap-2 mt-2">
+          <Database className="w-4 h-4 text-university-gold" />
+          <span className="text-sm text-blue-100">Base de conhecimento:</span>
+          <Select
+            value={selectedBase}
+            onValueChange={handleBaseChange}
+            disabled={isLoadingBases || isSwitchingBase} // Desabilita durante ambos os loadings
+          >
+            <SelectTrigger className="w-48 bg-white/10 border-white/20 text-white">
+              {isSwitchingBase ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Alternando...</span>
+                </div>
+              ) : (
+                <SelectValue placeholder="Selecionar base..." />
+              )}
+            </SelectTrigger>
+            <SelectContent className=" border-border">
+              {isLoadingBases ? (
+                <SelectItem value="loading" disabled>
+                  Carregando bases...
+                </SelectItem>
+              ) : (
+                availableBases.map((base) => (
+                  <SelectItem key={base.name} value={base.name}>
+                    {base.description}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

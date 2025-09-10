@@ -1,0 +1,14 @@
+{
+  "default": {
+    "documents_dir": "document_storage",
+    "faiss_index_path": "faiss_index",
+    "output_docs_file": "processed_docs.pkl",
+    "description": "DRCA"
+  },
+  "estagio_CES": {
+    "documents_dir": "bases/estagio_CES/documents",
+    "faiss_index_path": "bases/estagio_CES/faiss_index",
+    "output_docs_file": "bases/estagio_CES/processed_docs.pkl",
+    "description": "Coordenadoria de Est\u00e1gio - CES"
+  }
+}
