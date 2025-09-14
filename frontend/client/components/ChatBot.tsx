@@ -22,6 +22,10 @@ interface Message {
   sources?: any[];
 }
 
+interface ChatBotProps {
+  prefillQuestion?: string; // Adicione esta prop
+}
+
 interface Source {
   metadata: {
     source: string;
@@ -47,7 +51,7 @@ interface Base {
   description: string;
 }
 
-export function ChatBot() {
+export function ChatBot({ prefillQuestion }: ChatBotProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -80,6 +84,17 @@ export function ChatBot() {
     // Carregar bases disponíveis ao inicializar
     fetchAvailableBases();
   }, []);
+
+   useEffect(() => {
+    if (prefillQuestion) {
+      setInputValue(prefillQuestion);
+      // Opcional: focar no input automaticamente
+      const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+      if (inputElement) {
+        inputElement.focus();
+      }
+    }
+  }, [prefillQuestion]);
 
   const suggestedQuestions = [
     'Onde envio atestado médico ?',
@@ -295,6 +310,7 @@ export function ChatBot() {
   };
 
   const handleSuggestedQuestion = (question: string) => {
+    console.log("handleSuggestedQuestion: ", question)
     setInputValue(question);
   };
 

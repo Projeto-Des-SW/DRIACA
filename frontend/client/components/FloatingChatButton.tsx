@@ -6,21 +6,27 @@ import { Badge } from './ui/badge';
 
 interface FloatingChatButtonProps {
   onChatClick: () => void;
+  onQuickQuestionSelect?: (question: string) => void; 
 }
 
-export default function FloatingChatButton({ onChatClick }: FloatingChatButtonProps) {
+export default function FloatingChatButton({ 
+  onChatClick, 
+  onQuickQuestionSelect 
+}: FloatingChatButtonProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const quickQuestions = [
-    "Como fazer matrícula?",
-    "Calendário acadêmico 2024",
-    "Horário da biblioteca",
-    "Bolsas de estudo"
+    "Quais os passos para submeter o TCC?",
+    "Como desbloquear o siga?",
+    "Qual o processo para envio de ACCs?",
+    "Onde verificar pendências de documentos?"
   ];
 
   const handleQuickQuestion = (question: string) => {
     onChatClick();
-    // Could pass the question to pre-fill the chat
+    if (onQuickQuestionSelect) {
+      onQuickQuestionSelect(question); 
+    }
     setIsExpanded(false);
   };
 

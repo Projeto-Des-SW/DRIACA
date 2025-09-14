@@ -492,13 +492,14 @@ export default function Admin() {
       toast.error('Falha ao atualizar configurações');
     }
   };
+  
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (doc.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+                        (doc.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = selectedStatus === 'all' || 
-                         (selectedStatus === 'processed' && processedDocuments.some(p => p.metadata.source === doc.filename)) ||
-                         (selectedStatus === 'unprocessed' && !processedDocuments.some(p => p.metadata.source === doc.filename));
+                        (selectedStatus === 'processed' && isDocumentProcessed(doc.filename)) ||
+                        (selectedStatus === 'unprocessed' && !isDocumentProcessed(doc.filename));
     
     return matchesSearch && matchesStatus;
   });
@@ -797,12 +798,6 @@ export default function Admin() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Button size="sm" variant="outline">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Download className="w-4 h-4" />
-                            </Button>
                             <Button 
                               size="sm" 
                               variant="destructive"
