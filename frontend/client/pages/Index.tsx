@@ -17,7 +17,7 @@ export default function Index() {
       <Header setShowChat={setShowChat} />
 
       {showChat ? (
-        <section className="container mx-auto px-4 py-6 h-[calc(100vh-80px)]">
+        <section className="container mx-auto px-4 py-6 h-[calc(150vh-80px)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">Chat Assistente Acadêmico</h2>
             <button

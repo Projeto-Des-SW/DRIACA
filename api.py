@@ -630,15 +630,114 @@ async def delete_base(base_name: str, api_key: str = Depends(get_api_key)):
 async def update_environment_variables(update_request: EnvUpdateRequest, api_key: str = Depends(get_api_key)):
     """
     Atualiza variáveis de ambiente no arquivo .env
+    
+    Parâmetros:
+    - GROQ_API_KEY: Chave API da Groq
+    - TOP_K: Número de documentos relevantes a recuperar
+    - EMBED_MODEL_ID: ID do modelo de embedding
+    - GEN_MODEL_ID: ID do modelo generativo
     """
-    # ... (código existente mantido igual) ...
+    try:
+        env_file_path = ".env"
+        
+        # Verificar se o arquivo .env existe
+        if not os.path.exists(env_file_path):
+            # Criar um arquivo .env vazio se não existir
+            with open(env_file_path, "w") as f:
+                f.write("# Environment variables\n")
+        
+        # Ler o conteúdo atual do arquivo
+        with open(env_file_path, "r") as f:
+            lines = f.readlines()
+        
+        # Preparar as atualizações
+        updates = {
+            "GROQ_API_KEY": update_request.GROQ_API_KEY,
+            "TOP_K": update_request.TOP_K,
+            "EMBED_MODEL_ID": update_request.EMBED_MODEL_ID,
+            "GEN_MODEL_ID": update_request.GEN_MODEL_ID
+        }
+        
+        # Processar cada linha do arquivo
+        new_lines = []
+        updated_vars = set()
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Verificar se a linha contém alguma das variáveis que queremos atualizar
+            matched = False
+            for var_name, var_value in updates.items():
+                if line_stripped.startswith(f"{var_name}="):
+                    if var_value is not None:
+                        # Atualizar a linha com o novo valor
+                        new_lines.append(f"{var_name}={var_value}\n")
+                        updated_vars.add(var_name)
+                    else:
+                        # Manter a linha original se o valor for None
+                        new_lines.append(line)
+                    matched = True
+                    break
+            
+            if not matched:
+                # Manter linhas que não são variáveis que queremos atualizar
+                new_lines.append(line)
+        
+        # Adicionar variáveis que não existiam no arquivo (apenas se o valor não for None)
+        for var_name, var_value in updates.items():
+            if var_value is not None and var_name not in updated_vars:
+                new_lines.append(f"{var_name}={var_value}\n")
+                updated_vars.add(var_name)
+        
+        # Escrever o novo conteúdo no arquivo
+        with open(env_file_path, "w") as f:
+            f.writelines(new_lines)
+        
+        # Atualizar as variáveis de ambiente em tempo de execução
+        if update_request.GROQ_API_KEY is not None:
+            os.environ["GROQ_API_KEY"] = update_request.GROQ_API_KEY
+        if update_request.TOP_K is not None:
+            os.environ["TOP_K"] = update_request.TOP_K
+        if update_request.EMBED_MODEL_ID is not None:
+            os.environ["EMBED_MODEL_ID"] = update_request.EMBED_MODEL_ID
+        if update_request.GEN_MODEL_ID is not None:
+            os.environ["GEN_MODEL_ID"] = update_request.GEN_MODEL_ID
+        
+        logger.info(f"Variáveis de ambiente atualizadas: {list(updated_vars)}")
+        
+        return {
+            "status": "success",
+            "message": "Variáveis de ambiente atualizadas com sucesso",
+            "updated_variables": list(updated_vars),
+            "note": "Algumas mudanças podem requerer reinício da aplicação para ter efeito completo"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro ao atualizar variáveis de ambiente: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao atualizar variáveis de ambiente: {str(e)}"
+        )
+
 
 @app.get("/env-status")
 async def get_environment_status(api_key: str = Depends(get_api_key)):
     """
     Retorna o status atual das variáveis de ambiente
     """
-    # ... (código existente mantido igual) ...
+    try:
+        return {
+            "GROQ_API_KEY": "***" if os.getenv("GROQ_API_KEY") else "Não definida",
+            "TOP_K": os.getenv("TOP_K", "3"),
+            "EMBED_MODEL_ID": os.getenv("EMBED_MODEL_ID", "Qwen/Qwen3-Embedding-0.6B"),
+            "GEN_MODEL_ID": os.getenv("GEN_MODEL_ID", "llama-3.1-8b-instant"),
+            "env_file_exists": os.path.exists(".env")
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao verificar status do ambiente: {str(e)}"
+        )
 
 # Documentação adicional
 app.openapi_tags = [{

@@ -10,7 +10,7 @@ export default function Footer() {
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
             <span className="font-medium">
-              © 2024 Universidade Federal do Agreste de Pernambuco
+              © 2025 Universidade Federal do Agreste de Pernambuco
             </span>
           </div>
           <p className="text-sm text-muted-foreground">

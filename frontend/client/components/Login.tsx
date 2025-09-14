@@ -16,7 +16,7 @@ export default function Login({ onLogin }: LoginProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Credenciais fixas (em produção, use variáveis de ambiente)
+    // Credenciais fixas (em produção, use variáveis de ambiente) 
     if (username === import.meta.env.VITE_ADMIN_USERNAME && 
     password === import.meta.env.VITE_ADMIN_PASSWORD) {
       localStorage.setItem('isAuthenticated', 'true');
@@ -65,9 +65,6 @@ export default function Login({ onLogin }: LoginProps) {
               Entrar
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm text-muted-foreground">
-            <p>Usuário: admin | Senha: admin123</p>
-          </div>
         </CardContent>
       </Card>
     </div>

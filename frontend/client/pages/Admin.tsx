@@ -83,8 +83,8 @@ interface BaseConfig {
   description?: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000';
-const API_KEY = '123'; // Substitua pela sua chave API real
+const API_BASE_URL = import.meta.env.VITE_RAG_API_URL;
+const API_KEY = import.meta.env.VITE_RAG_API_KEY;
 
 export default function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -773,7 +773,12 @@ export default function Admin() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <FileText className="w-5 h-5 text-university-blue" />
-                              <h3 className="font-semibold">{doc.filename}</h3>
+                              <h3 className="font-semibold">
+                                {doc.filename.length > 90 
+                                  ? `${doc.filename.substring(0, 90)}...` 
+                                  : doc.filename
+                                }
+                              </h3>
                               <Badge className={getStatusColor(doc.filename)}>
                                 {isProcessed ? 'Processado' : 'Não Processado'}
                               </Badge>

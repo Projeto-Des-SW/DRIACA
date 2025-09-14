@@ -95,7 +95,7 @@ export function ChatBot() {
 
   const fetchAvailableBases = async () => {
     try {
-      const basesUrl = API_URL.replace('/query', '/bases');
+      const basesUrl = API_URL+'/bases';
       const response = await fetch(basesUrl, {
         method: 'GET',
         headers: {
@@ -129,7 +129,7 @@ export function ChatBot() {
 
   const switchBase = async (baseName: string) => {
     try {
-      const switchUrl = API_URL.replace('/query', '/bases/switch');
+      const switchUrl = API_URL+'/bases/switch';
       const response = await fetch(switchUrl, {
         method: 'POST',
         headers: {
@@ -165,7 +165,7 @@ export function ChatBot() {
 
   const callRAGAPI = async (question: string): Promise<APIResponse> => {
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(API_URL+'/query', {
         method: 'POST',
         headers: {
           'x-api-key': API_KEY,
