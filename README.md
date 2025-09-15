@@ -49,6 +49,81 @@ O projeto utiliza a arquitetura **RAG (Retrieval-Augmented Generation)**, combin
 
 - Citações de Fontes – Exibição da origem da informação para maior transparência
 
+
+## 🚀 Como Executar o Projeto
+
+Siga as instruções abaixo para configurar e executar o ambiente de desenvolvimento localmente.
+
+### Pré-requisitos
+
+- [Python](https://www.python.org/downloads/) 3.8 ou superior
+- [Node.js](https://nodejs.org/) e [npm](https://www.npmjs.com/) (ou um gerenciador de pacotes compatível)
+
+### 1. Configuração do Backend
+
+Primeiro, configure o servidor da API.
+
+**a. Chave de API do GROQ:**
+
+1.  Acesse [https://console.groq.com/keys](https://console.groq.com/keys) e crie uma nova chave de API.
+2.  Na raiz do projeto, crie um arquivo chamado `.env`.
+3.  Adicione a sua chave ao arquivo da seguinte forma:
+
+    ```.env
+    GROQ_API_KEY=SUA_CHAVE_DE_API_AQUI
+    ```
+
+**b. Instalação das dependências Python:**
+
+Navegue até a pasta raiz do projeto e execute o seguinte comando para instalar as bibliotecas necessárias:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Configuração do Frontend
+
+Agora, vamos configurar a interface do usuário.
+
+**a. Acesse a pasta do frontend:**
+
+```bash
+cd frontend
+```
+
+**b. Instale as dependências:**
+
+Execute o comando abaixo para instalar todas as dependências do projeto frontend.
+
+```bash
+npm install
+```
+
+### 3. Executando a Aplicação
+
+Com tudo configurado, você precisará de dois terminais para executar o backend e o frontend simultaneamente.
+
+**a. Para iniciar o servidor FastAPI (Backend):**
+
+No **primeiro terminal**, a partir da **raiz do projeto**, execute:
+
+```bash
+uvicorn api:app --reload --host 0.0.0.0 --port 8000
+```
+
+O servidor estará disponível em `http://localhost:8000`.
+
+**b. Para iniciar o cliente (Frontend):**
+
+No **segundo terminal**, a partir da pasta `/frontend`, execute:
+
+```bash
+npm run dev
+```
+
+A aplicação frontend estará acessível em `http://localhost:8080` .
+
+
 ## 📄 Licença
 Este projeto está sob a licença MIT.
 
