@@ -17,6 +17,7 @@ O projeto utiliza a arquitetura **RAG (Retrieval-Augmented Generation)**, combin
 [![Pitch](https://img.shields.io/badge/Pitch-2CA5E0?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1V5-ieueWCBRqQHdhDtrm9FqGauXmya8I/view?usp=sharing)
 [![Video Pitch](https://img.shields.io/badge/Video_Pitch-2CA5E0?style=for-the-badge&logo=googledrive&logoColor=white)](https://youtu.be/J3WoFfkqsnA)
 [![Testes de Aceitação](https://img.shields.io/badge/Testes_de_aceitacao-2CA5E0?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1XUTTI-4w1MHJZLhnVpHnmTpswyASTDa_/view?usp=sharing)
+[![Formulario da pesquisa](https://img.shields.io/badge/Formulario_da_pesquisa-2CA5E0?style=for-the-badge&logo=googledrive&logoColor=white)](https://docs.google.com/forms/d/e/1FAIpQLSf2QV89qzNH-1yQRlSspoH_fZAwUnBlSWKUZQHLx8GnDRzCGQ/viewform?usp=sharing&ouid=108929630643745737054)
 
 ## 👩‍💻 Equipe
 
